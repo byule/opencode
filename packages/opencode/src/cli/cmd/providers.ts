@@ -313,10 +313,25 @@ export const ProvidersLoginCommand = cmd({
             prompts.outro("Done")
             return
           }
+          const trimmed = token.trim()
+          // Decode exp from the JWT payload without verifying the signature so
+          // the refresh logic in `attach` knows when to re-run the command.
+          const exp = (() => {
+            const parts = trimmed.split(".")
+            if (parts.length !== 3) return undefined
+            try {
+              const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString())
+              return typeof payload.exp === "number" ? payload.exp : undefined
+            } catch {
+              return undefined
+            }
+          })()
           await put(url, {
             type: "wellknown",
             key: wellknown.auth.env,
-            token: token.trim(),
+            token: trimmed,
+            command: wellknown.auth.command,
+            expires: exp,
           })
           prompts.log.success("Logged into " + url)
           prompts.outro("Done")

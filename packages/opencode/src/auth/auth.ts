@@ -29,6 +29,12 @@ export class WellKnown extends Schema.Class<WellKnown>("WellKnownAuth")({
   type: Schema.Literal("wellknown"),
   key: Schema.String,
   token: Schema.String,
+  // Command to re-run when the token has expired (stdout becomes the new token).
+  // Present when the well-known response included an `auth.command` field.
+  command: Schema.optional(Schema.Array(Schema.String)),
+  // Unix-second expiry decoded from the token's JWT `exp` claim.
+  // When set and in the past, `command` is re-run before the token is used.
+  expires: Schema.optional(Schema.Number),
 }) {}
 
 const _Info = Schema.Union([Oauth, Api, WellKnown]).annotate({ discriminator: "type", identifier: "Auth" })
