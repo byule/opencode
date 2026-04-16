@@ -4,15 +4,15 @@ import { tui } from "./app"
 import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 import { TuiConfig } from "@/cli/cmd/tui/config/tui"
 import * as prompts from "@clack/prompts"
-import { cfAccessToken, listWorkspaces, sandboxSecret } from "./seal"
+import { cfAccessToken, listWorkspaces, sandboxConnect } from "./seal"
 
 // Resolve the TUI target URL and Basic Auth headers.
 //
 // Three cases:
-//   1. --password given → use as-is (existing behaviour, direct attach)
-//   2. No --password, URL looks like a Seal base URL (has CF Access credentials
-//      stored) → auto-fetch the workspace secret via the Seal API
-//   3. No --password, no stored credentials → attach without auth (local servers)
+//   1. --password given (or OPENCODE_SERVER_PASSWORD set) → use as-is (direct attach)
+//   2. No password, CF Access credentials stored for the URL → auto-fetch workspace
+//      secret + preview URL from the Seal API
+//   3. No password, no stored credentials → attach without auth (local server)
 async function resolveTarget(
   url: string,
   password: string | undefined,
@@ -32,6 +32,7 @@ async function resolveTarget(
 
   const token = await cfAccessToken(sealBase).catch(() => null)
   if (!token) {
+    // No CF Access credentials stored — treat as a plain local server.
     return { url, headers: undefined }
   }
 
@@ -40,27 +41,32 @@ async function resolveTarget(
     throw new Error(`Failed to fetch workspaces from ${sealBase}: ${err instanceof Error ? err.message : String(err)}`)
   })
 
-  const active = workspaces.filter((w) => w.activeSandbox?.opencodeUrl)
-  if (active.length === 0) {
-    throw new Error("No workspaces with an active sandbox found. Start a sandbox from the web UI first.")
+  if (workspaces.length === 0) {
+    throw new Error("No workspaces found. Create one from the web UI first.")
   }
 
   const workspace = await (async () => {
-    if (active.length === 1) return active[0]
+    if (workspaces.length === 1) return workspaces[0]
     const choice = await prompts.select({
       message: "Select workspace",
-      options: active.map((w) => ({ label: w.name, value: w.id })),
+      options: workspaces.map((w) => ({ label: w.name, value: w.id })),
     })
     if (prompts.isCancel(choice)) throw new UI.CancelledError()
-    return active.find((w) => w.id === choice)!
+    return workspaces.find((w) => w.id === choice)!
   })()
 
-  const secret = await sandboxSecret(sealBase, workspace.id)
-  const opencodeUrl = new URL(workspace.activeSandbox!.opencodeUrl!).origin
+  const connect = await sandboxConnect(sealBase, workspace.id)
+  if (!connect) {
+    throw new Error(`No active sandbox for workspace "${workspace.name}". Start one from the web UI first.`)
+  }
+  if (!connect.opencodeUrl) {
+    throw new Error(`Sandbox for workspace "${workspace.name}" is still starting. Try again in a moment.`)
+  }
 
+  const opencodeUrl = new URL(connect.opencodeUrl).origin
   return {
     url: opencodeUrl,
-    headers: { Authorization: `Basic ${Buffer.from(`opencode:${secret}`).toString("base64")}` },
+    headers: { Authorization: `Basic ${Buffer.from(`opencode:${connect.secret}`).toString("base64")}` },
   }
 }
 

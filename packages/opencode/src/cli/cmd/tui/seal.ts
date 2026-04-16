@@ -69,10 +69,11 @@ export async function cfAccessToken(baseUrl: string): Promise<string> {
 type SealWorkspace = {
   id: string
   name: string
-  activeSandbox: { opencodeUrl: string } | null
 }
 
 // Fetch the list of workspaces from the Seal API using the stored CF Access token.
+// WorkspaceInfo (returned by GET /workspaces) contains only id/name/status —
+// sandbox state lives on WorkspaceDO, not in the list response.
 export async function listWorkspaces(baseUrl: string): Promise<SealWorkspace[]> {
   const norm = baseUrl.replace(/\/+$/, "")
   const token = await cfAccessToken(norm)
@@ -84,14 +85,22 @@ export async function listWorkspaces(baseUrl: string): Promise<SealWorkspace[]> 
   return data.workspaces
 }
 
-// Fetch the per-sandbox Basic Auth secret for `workspaceId`.
-export async function sandboxSecret(baseUrl: string, workspaceId: string): Promise<string> {
+type SandboxConnect = {
+  secret: string
+  // The preview URL for the sandbox's OpenCode port. Null when the sandbox
+  // is not yet active (container still starting or not provisioned).
+  opencodeUrl: string | null
+}
+
+// Fetch the per-sandbox Basic Auth secret and preview URL for `workspaceId`.
+// Returns null when no active sandbox exists for the workspace (404).
+export async function sandboxConnect(baseUrl: string, workspaceId: string): Promise<SandboxConnect | null> {
   const norm = baseUrl.replace(/\/+$/, "")
   const token = await cfAccessToken(norm)
   const res = await fetch(`${norm}/api/workspaces/${workspaceId}/sandbox-secret`, {
     headers: { "cf-access-jwt-assertion": token },
   })
+  if (res.status === 404) return null
   if (!res.ok) throw new Error(`Seal API returned ${res.status} fetching sandbox secret`)
-  const data = (await res.json()) as { secret: string }
-  return data.secret
+  return res.json() as Promise<SandboxConnect>
 }
