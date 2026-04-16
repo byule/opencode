@@ -55,15 +55,28 @@ async function resolveTarget(
     return workspaces.find((w) => w.id === choice)!
   })()
 
-  const connect = await sandboxConnect(sealBase, workspace.id)
-  if (!connect) {
-    throw new Error(`No active sandbox for workspace "${workspace.name}". Start one from the web UI first.`)
-  }
-  if (!connect.opencodeUrl) {
-    throw new Error(`Sandbox for workspace "${workspace.name}" is still starting. Try again in a moment.`)
-  }
+  // Poll until the sandbox's opencode port is exposed (container may still be
+  // starting). Retry every 5 seconds for up to 60 seconds before giving up.
+  const spinner = prompts.spinner()
+  spinner.start(`Waiting for sandbox to start…`)
+  const connect = await (async () => {
+    const MAX_ATTEMPTS = 12
+    const DELAY_MS = 5000
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const result = await sandboxConnect(sealBase, workspace.id)
+      if (!result) {
+        spinner.stop("No active sandbox")
+        throw new Error(`No active sandbox for workspace "${workspace.name}". Start one from the web UI first.`)
+      }
+      if (result.opencodeUrl) return result
+      if (attempt < MAX_ATTEMPTS - 1) await new Promise((r) => setTimeout(r, DELAY_MS))
+    }
+    spinner.stop("Timed out")
+    throw new Error(`Sandbox for workspace "${workspace.name}" did not become ready within 60 seconds.`)
+  })()
+  spinner.stop("Sandbox ready")
 
-  const opencodeUrl = new URL(connect.opencodeUrl).origin
+  const opencodeUrl = new URL(connect.opencodeUrl!).origin
   return {
     url: opencodeUrl,
     headers: { Authorization: `Basic ${Buffer.from(`opencode:${connect.secret}`).toString("base64")}` },

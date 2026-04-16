@@ -297,7 +297,25 @@ export const ProvidersLoginCommand = cmd({
         prompts.intro("Add credential")
         if (args.url) {
           const url = args.url.replace(/\/+$/, "")
-          const wellknown = await fetch(`${url}/.well-known/opencode`).then((x) => x.json() as any)
+          let wellknown: any
+          try {
+            const res = await fetch(`${url}/.well-known/opencode`)
+            if (!res.ok) {
+              prompts.log.error(`Server returned ${res.status} for ${url}/.well-known/opencode`)
+              prompts.outro("Done")
+              return
+            }
+            wellknown = await res.json()
+          } catch {
+            prompts.log.error(`Could not reach ${url}`)
+            prompts.outro("Done")
+            return
+          }
+          if (!Array.isArray(wellknown?.auth?.command) || wellknown.auth.command.length === 0) {
+            prompts.log.error("Server did not return a valid auth.command")
+            prompts.outro("Done")
+            return
+          }
           prompts.log.info(`Running \`${wellknown.auth.command.join(" ")}\``)
           const proc = Process.spawn(wellknown.auth.command, {
             stdout: "pipe",
