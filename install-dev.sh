@@ -77,17 +77,17 @@ if [ $# -gt 0 ] && [[ "${1:-}" =~ ^https?:// ]]; then
     URL="$1"
     shift
 
-    # Try to auto-fetch a Cloudflare Access token
-    TOKEN=""
-    if command -v cloudflared >/dev/null 2>&1; then
-        TOKEN=$(cloudflared access token --app="$URL" 2>/dev/null || true)
+    # cloudflared is required for URL shorthand
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        echo "Error: cloudflared is required to connect to remote URLs." >&2
+        echo "Install it: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" >&2
+        exit 1
     fi
 
-    if [ -n "$TOKEN" ]; then
-        exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" -H "cf-access-token: $TOKEN" "$@"
-    else
-        exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" "$@"
-    fi
+    # Fetch CF Access token (shows browser login link if needed)
+    TOKEN=$(cloudflared access token --app="$URL")
+
+    exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" -H "cf-access-token: $TOKEN" "$@"
 fi
 
 # Otherwise pass through to opencode normally
@@ -149,8 +149,8 @@ echo -e "${MUTED}Then verify:${NC}"
 echo -e "  cfcode --version                ${MUTED}# Should print 'local'${NC}"
 echo -e "  cfcode attach <url> -H \"cf-access-token: <token>\""
 echo ""
-echo -e "${MUTED}Quick connect to a remote URL:${NC}"
-echo -e "  cfcode <url>                    ${MUTED}# Attaches and auto-fetches CF Access token if available${NC}"
+echo -e "${MUTED}Quick connect to a remote URL (requires cloudflared):${NC}"
+echo -e "  cfcode <url>                    ${MUTED}# Auto-fetches CF Access token and attaches${NC}"
 echo ""
 echo -e "${MUTED}Example:${NC}"
 echo -e "  cfcode https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
