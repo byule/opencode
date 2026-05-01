@@ -95,28 +95,29 @@ exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- "$@"
 WRAPPER
 chmod +x "$BIN_DIR/cfcode"
 
+# Determine shell config file
+current_shell=$(basename "$SHELL")
+case $current_shell in
+    zsh)
+        config_file="${ZDOTDIR:-$HOME}/.zshrc"
+        ;;
+    bash)
+        config_file="$HOME/.bashrc"
+        ;;
+    fish)
+        config_file="$HOME/.config/fish/config.fish"
+        ;;
+    *)
+        config_file="$HOME/.profile"
+        ;;
+esac
+
 # Add to PATH if not already there
 print_message info "\n${MUTED}Configuring PATH...${NC}"
 
 if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
     print_message success "  $BIN_DIR is already in your PATH"
 else
-    current_shell=$(basename "$SHELL")
-    case $current_shell in
-        zsh)
-            config_file="${ZDOTDIR:-$HOME}/.zshrc"
-            ;;
-        bash)
-            config_file="$HOME/.bashrc"
-            ;;
-        fish)
-            config_file="$HOME/.config/fish/config.fish"
-            ;;
-        *)
-            config_file="$HOME/.profile"
-            ;;
-    esac
-
     if [ -f "$config_file" ]; then
         if grep -Fq "$BIN_DIR" "$config_file" 2>/dev/null; then
             print_message warning "  PATH entry already exists in $(basename "$config_file"), skipping."
