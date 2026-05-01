@@ -62,6 +62,20 @@ function block(info: Inline, output?: string) {
   UI.empty()
 }
 
+function parseHeaders(values: string[] | undefined): Record<string, string> | undefined {
+  if (!values || values.length === 0) return undefined
+  const result: Record<string, string> = {}
+  for (const value of values) {
+    const idx = value.indexOf(":")
+    if (idx === -1) throw new Error(`Invalid header format: "${value}". Expected "Key: Value"`)
+    const key = value.slice(0, idx).trim()
+    const val = value.slice(idx + 1).trim()
+    if (!key) throw new Error(`Invalid header format: "${value}". Missing key.`)
+    result[key] = val
+  }
+  return result
+}
+
 function fallback(part: ToolPart) {
   const state = part.state
   const input = "input" in state ? state.input : undefined
@@ -276,6 +290,12 @@ export const RunCommand = cmd({
         alias: ["p"],
         type: "string",
         describe: "basic auth password (defaults to OPENCODE_SERVER_PASSWORD)",
+      })
+      .option("header", {
+        alias: ["H"],
+        type: "string",
+        array: true,
+        describe: "custom header to send in the format 'Key: Value' (can be specified multiple times)",
       })
       .option("dir", {
         type: "string",
@@ -660,10 +680,11 @@ export const RunCommand = cmd({
     if (args.attach) {
       const headers = (() => {
         const password = args.password ?? process.env.OPENCODE_SERVER_PASSWORD
-        if (!password) return undefined
+        const custom = parseHeaders(args.header)
+        if (!password) return custom
         const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode"
         const auth = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
-        return { Authorization: auth }
+        return { Authorization: auth, ...custom }
       })()
       const sdk = createOpencodeClient({ baseUrl: args.attach, directory, headers })
       return await execute(sdk)

@@ -6,6 +6,20 @@ import { TuiConfig } from "@/cli/cmd/tui/config/tui"
 import * as prompts from "@clack/prompts"
 import { cfAccessToken, listWorkspaces, sandboxConnect } from "./seal"
 
+function parseHeaders(values: string[] | undefined): Record<string, string> | undefined {
+  if (!values || values.length === 0) return undefined
+  const result: Record<string, string> = {}
+  for (const value of values) {
+    const idx = value.indexOf(":")
+    if (idx === -1) throw new Error(`Invalid header format: "${value}". Expected "Key: Value"`)
+    const key = value.slice(0, idx).trim()
+    const val = value.slice(idx + 1).trim()
+    if (!key) throw new Error(`Invalid header format: "${value}". Missing key.`)
+    result[key] = val
+  }
+  return result
+}
+
 // Resolve the TUI target URL and Basic Auth headers.
 //
 // Three cases:
@@ -16,12 +30,13 @@ import { cfAccessToken, listWorkspaces, sandboxConnect } from "./seal"
 async function resolveTarget(
   url: string,
   password: string | undefined,
+  customHeaders: Record<string, string> | undefined,
 ): Promise<{ url: string; headers: Record<string, string> | undefined }> {
   const explicit = password ?? process.env.OPENCODE_SERVER_PASSWORD
   if (explicit) {
     return {
       url,
-      headers: { Authorization: `Basic ${Buffer.from(`opencode:${explicit}`).toString("base64")}` },
+      headers: { Authorization: `Basic ${Buffer.from(`opencode:${explicit}`).toString("base64")}`, ...customHeaders },
     }
   }
 
@@ -33,7 +48,7 @@ async function resolveTarget(
   const token = await cfAccessToken(sealBase).catch(() => null)
   if (!token) {
     // No CF Access credentials stored — treat as a plain local server.
-    return { url, headers: undefined }
+    return { url, headers: customHeaders }
   }
 
   // Fetch workspace list from the Seal API.
@@ -79,7 +94,7 @@ async function resolveTarget(
   const opencodeUrl = new URL(connect.opencodeUrl!).origin
   return {
     url: opencodeUrl,
-    headers: { Authorization: `Basic ${Buffer.from(`opencode:${connect.secret}`).toString("base64")}` },
+    headers: { Authorization: `Basic ${Buffer.from(`opencode:${connect.secret}`).toString("base64")}`, ...customHeaders },
   }
 }
 
@@ -115,6 +130,12 @@ export const AttachCommand = cmd({
         alias: ["p"],
         type: "string",
         describe: "basic auth password (defaults to OPENCODE_SERVER_PASSWORD)",
+      })
+      .option("header", {
+        alias: ["H"],
+        type: "string",
+        array: true,
+        describe: "custom header to send in the format 'Key: Value' (can be specified multiple times)",
       }),
   handler: async (args) => {
     const unguard = win32InstallCtrlCGuard()
@@ -138,7 +159,8 @@ export const AttachCommand = cmd({
         }
       })()
 
-      const target = await resolveTarget(args.url, args.password)
+      const customHeaders = parseHeaders(args.header)
+      const target = await resolveTarget(args.url, args.password, customHeaders)
       const config = await TuiConfig.get()
       await tui({
         url: target.url,
