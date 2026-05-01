@@ -76,34 +76,24 @@ INSTALL_DIR="$HOME/.cfcode"
 if [ $# -gt 0 ] && [[ "${1:-}" =~ ^https?:// ]]; then
     URL="$1"
     shift
-    exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" "$@"
+
+    # Try to auto-fetch a Cloudflare Access token
+    TOKEN=""
+    if command -v cloudflared >/dev/null 2>&1; then
+        TOKEN=$(cloudflared access token --app="$URL" 2>/dev/null || true)
+    fi
+
+    if [ -n "$TOKEN" ]; then
+        exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" -H "cf-access-token: $TOKEN" "$@"
+    else
+        exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" "$@"
+    fi
 fi
 
 # Otherwise pass through to opencode normally
 exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- "$@"
 WRAPPER
 chmod +x "$BIN_DIR/cfcode"
-
-cat > "$BIN_DIR/attach-cf" <<'WRAPPER'
-#!/usr/bin/env bash
-set -euo pipefail
-
-URL="${1:-}"
-if [ -z "$URL" ]; then
-    echo "Usage: attach-cf <url>"
-    echo "Example: attach-cf https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
-    exit 1
-fi
-
-if ! command -v cloudflared >/dev/null 2>&1; then
-    echo "cloudflared is required. Install it: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-    exit 1
-fi
-
-TOKEN=$(cloudflared access token --app="$URL")
-exec cfcode attach "$URL" -H "cf-access-token: $TOKEN"
-WRAPPER
-chmod +x "$BIN_DIR/attach-cf"
 
 # Add to PATH if not already there
 print_message info "\n${MUTED}Configuring PATH...${NC}"
@@ -159,12 +149,8 @@ echo -e "  cfcode --version                ${MUTED}# Should print 'local'${NC}"
 echo -e "  cfcode attach <url> -H \"cf-access-token: <token>\""
 echo ""
 echo -e "${MUTED}Quick connect to a remote URL:${NC}"
-echo -e "  cfcode <url>                    ${MUTED}# Shorthand for 'cfcode attach <url>'${NC}"
+echo -e "  cfcode <url>                    ${MUTED}# Attaches and auto-fetches CF Access token if available${NC}"
 echo ""
-echo -e "${MUTED}For CF Access-protected servers:${NC}"
-echo -e "  attach-cf <url>                 ${MUTED}# Auto-fetches token via cloudflared${NC}"
-echo ""
-echo -e "${MUTED}Examples:${NC}"
+echo -e "${MUTED}Example:${NC}"
 echo -e "  cfcode https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
-echo -e "  attach-cf https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
 echo ""
