@@ -84,7 +84,8 @@ if [ $# -gt 0 ] && [[ "${1:-}" =~ ^https?:// ]]; then
         exit 1
     fi
 
-    # Fetch CF Access token (shows browser login link if needed)
+    # Ensure CF Access token is available (login if needed, shows browser link)
+    cloudflared access login "$URL"
     TOKEN=$(cloudflared access token --app="$URL")
 
     exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" -H "cf-access-token: $TOKEN" "$@"
