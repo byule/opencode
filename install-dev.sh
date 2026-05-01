@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP=opencode
 REPO="https://github.com/byule/opencode.git"
 BRANCH="dev"
-INSTALL_DIR="$HOME/.opencode-dev"
+INSTALL_DIR="$HOME/.cfcode"
 BIN_DIR="$INSTALL_DIR/bin"
 
 MUTED='\033[0;2m'
@@ -67,11 +66,23 @@ bun install
 print_message info "\n${MUTED}Creating wrapper scripts in ${NC}$BIN_DIR"
 mkdir -p "$BIN_DIR"
 
-cat > "$BIN_DIR/opencode" <<'WRAPPER'
+cat > "$BIN_DIR/cfcode" <<'WRAPPER'
 #!/usr/bin/env bash
-exec bun run --cwd "$HOME/.opencode-dev/packages/opencode" dev -- "$@"
+set -euo pipefail
+
+INSTALL_DIR="$HOME/.cfcode"
+
+# If first argument looks like a URL, treat it as 'attach <url>'
+if [ $# -gt 0 ] && [[ "${1:-}" =~ ^https?:// ]]; then
+    URL="$1"
+    shift
+    exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- attach "$URL" "$@"
+fi
+
+# Otherwise pass through to opencode normally
+exec bun run --cwd "$INSTALL_DIR/packages/opencode" dev -- "$@"
 WRAPPER
-chmod +x "$BIN_DIR/opencode"
+chmod +x "$BIN_DIR/cfcode"
 
 cat > "$BIN_DIR/attach-cf" <<'WRAPPER'
 #!/usr/bin/env bash
@@ -90,7 +101,7 @@ if ! command -v cloudflared >/dev/null 2>&1; then
 fi
 
 TOKEN=$(cloudflared access token --app="$URL")
-exec opencode attach "$URL" -H "cf-access-token: $TOKEN"
+exec cfcode attach "$URL" -H "cf-access-token: $TOKEN"
 WRAPPER
 chmod +x "$BIN_DIR/attach-cf"
 
@@ -121,7 +132,7 @@ else
             print_message warning "  PATH entry already exists in $(basename "$config_file"), skipping."
         else
             echo "" >> "$config_file"
-            echo "# opencode dev branch (byule fork)" >> "$config_file"
+            echo "# cfcode (byule's opencode fork)" >> "$config_file"
             echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$config_file"
             print_message success "  Added $BIN_DIR to PATH in $(basename "$config_file")"
         fi
@@ -138,18 +149,22 @@ echo -e "${MUTED}█▀▀█ █▀▀█ █▀▀█ █▀▀▄ ${NC}█▀
 echo -e "${MUTED}█░░█ █░░█ █▀▀▀ █░░█ ${NC}█░░░ █░░█ █░░█ █▀▀▀"
 echo -e "${MUTED}▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ${NC}▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"
 echo -e ""
-print_message success "OpenCode (dev branch) installed successfully!"
+print_message success "cfcode installed successfully!"
 echo ""
 echo -e "${MUTED}To use it now, run:${NC}"
 echo -e "  source $(basename "$config_file" 2>/dev/null || echo 'your shell config')"
 echo ""
 echo -e "${MUTED}Then verify:${NC}"
-echo -e "  opencode --version              ${MUTED}# Should print 'local'${NC}"
-echo -e "  opencode attach <url> -H \"cf-access-token: <token>\""
+echo -e "  cfcode --version                ${MUTED}# Should print 'local'${NC}"
+echo -e "  cfcode attach <url> -H \"cf-access-token: <token>\""
+echo ""
+echo -e "${MUTED}Quick connect to a remote URL:${NC}"
+echo -e "  cfcode <url>                    ${MUTED}# Shorthand for 'cfcode attach <url>'${NC}"
 echo ""
 echo -e "${MUTED}For CF Access-protected servers:${NC}"
 echo -e "  attach-cf <url>                 ${MUTED}# Auto-fetches token via cloudflared${NC}"
 echo ""
-echo -e "${MUTED}Example:${NC}"
+echo -e "${MUTED}Examples:${NC}"
+echo -e "  cfcode https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
 echo -e "  attach-cf https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
 echo ""
