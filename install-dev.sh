@@ -5,6 +5,7 @@ APP=opencode
 REPO="https://github.com/byule/opencode.git"
 BRANCH="dev"
 INSTALL_DIR="$HOME/.opencode-dev"
+BIN_DIR="$INSTALL_DIR/bin"
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -62,59 +63,17 @@ print_message info "\n${MUTED}Installing dependencies...${NC}"
 cd "$INSTALL_DIR"
 bun install
 
-# Set up shell alias
-print_message info "\n${MUTED}Configuring shell alias...${NC}"
+# Create wrapper scripts
+print_message info "\n${MUTED}Creating wrapper scripts in ${NC}$BIN_DIR"
+mkdir -p "$BIN_DIR"
 
-ALIAS_CMD="alias opencode='bun run --cwd $INSTALL_DIR/packages/opencode dev --'"
+cat > "$BIN_DIR/opencode" <<'WRAPPER'
+#!/usr/bin/env bash
+exec bun run --cwd "$HOME/.opencode-dev/packages/opencode" dev -- "$@"
+WRAPPER
+chmod +x "$BIN_DIR/opencode"
 
-current_shell=$(basename "$SHELL")
-case $current_shell in
-    zsh)
-        config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv"
-        ;;
-    bash)
-        config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile"
-        ;;
-    fish)
-        config_files="$HOME/.config/fish/config.fish"
-        ALIAS_CMD="alias opencode 'bun run --cwd $INSTALL_DIR/packages/opencode dev --'"
-        ;;
-    *)
-        config_files="$HOME/.bashrc $HOME/.profile"
-        ;;
-esac
-
-config_file=""
-for file in $config_files; do
-    if [ -f "$file" ]; then
-        config_file=$file
-        break
-    fi
-done
-
-if [ -z "$config_file" ]; then
-    config_file="$HOME/.zshrc"
-    [ "$current_shell" = "bash" ] && config_file="$HOME/.bashrc"
-fi
-
-add_alias() {
-    local file=$1
-    local cmd=$2
-
-    if grep -Fq "$INSTALL_DIR/packages/opencode" "$file" 2>/dev/null; then
-        print_message warning "  opencode alias already exists in $(basename "$file"), skipping."
-    else
-        echo "" >> "$file"
-        echo "# opencode dev branch (byule fork)" >> "$file"
-        echo "$cmd" >> "$file"
-        print_message success "  Added alias to $(basename "$file")"
-    fi
-}
-
-add_alias "$config_file" "$ALIAS_CMD"
-
-# Also add a convenience wrapper for CF Access
-cat > "$INSTALL_DIR/attach-cf" <<'WRAPPER'
+cat > "$BIN_DIR/attach-cf" <<'WRAPPER'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -133,7 +92,44 @@ fi
 TOKEN=$(cloudflared access token --app="$URL")
 exec opencode attach "$URL" -H "cf-access-token: $TOKEN"
 WRAPPER
-chmod +x "$INSTALL_DIR/attach-cf"
+chmod +x "$BIN_DIR/attach-cf"
+
+# Add to PATH if not already there
+print_message info "\n${MUTED}Configuring PATH...${NC}"
+
+if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
+    print_message success "  $BIN_DIR is already in your PATH"
+else
+    current_shell=$(basename "$SHELL")
+    case $current_shell in
+        zsh)
+            config_file="${ZDOTDIR:-$HOME}/.zshrc"
+            ;;
+        bash)
+            config_file="$HOME/.bashrc"
+            ;;
+        fish)
+            config_file="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            config_file="$HOME/.profile"
+            ;;
+    esac
+
+    if [ -f "$config_file" ]; then
+        if grep -Fq "$BIN_DIR" "$config_file" 2>/dev/null; then
+            print_message warning "  PATH entry already exists in $(basename "$config_file"), skipping."
+        else
+            echo "" >> "$config_file"
+            echo "# opencode dev branch (byule fork)" >> "$config_file"
+            echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$config_file"
+            print_message success "  Added $BIN_DIR to PATH in $(basename "$config_file")"
+        fi
+    else
+        print_message warning "  Could not find shell config. Add this manually:"
+        echo "    export PATH=\"$BIN_DIR:\$PATH\""
+    fi
+fi
 
 # Summary
 echo ""
@@ -145,14 +141,14 @@ echo -e ""
 print_message success "OpenCode (dev branch) installed successfully!"
 echo ""
 echo -e "${MUTED}To use it now, run:${NC}"
-echo -e "  source $(basename "$config_file")"
+echo -e "  source $(basename "$config_file" 2>/dev/null || echo 'your shell config')"
 echo ""
-echo -e "${MUTED}Then you can run:${NC}"
+echo -e "${MUTED}Then verify:${NC}"
 echo -e "  opencode --version              ${MUTED}# Should print 'local'${NC}"
 echo -e "  opencode attach <url> -H \"cf-access-token: <token>\""
 echo ""
 echo -e "${MUTED}For CF Access-protected servers:${NC}"
-echo -e "  $INSTALL_DIR/attach-cf <url>    ${MUTED}# Auto-fetches token via cloudflared${NC}"
+echo -e "  attach-cf <url>                 ${MUTED}# Auto-fetches token via cloudflared${NC}"
 echo ""
 echo -e "${MUTED}Example:${NC}"
 echo -e "  attach-cf https://4096-sb-867770819f83-j6kaxtmu0u7opzod.superseal.cloudflare.dev/"
