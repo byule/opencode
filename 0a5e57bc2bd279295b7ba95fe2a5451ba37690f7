@@ -1,0 +1,23 @@
+install-dev.sh
+  0bf149ce7fa92a11 80-84,87-90,152-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "0a5e57bc2bd279295b7ba95fe2a5451ba37690f7",
+  "prompts": {
+    "0bf149ce7fa92a11": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_21c2ec1c5ffeusW5qovsih9n3o",
+        "model": "cloudflare-workers-ai/@cf/moonshotai/kimi-k2.6"
+      },
+      "human_author": "byule@cloudflare.com",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 11,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}
